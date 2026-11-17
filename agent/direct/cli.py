@@ -42,7 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Convergence target.")
     parser.add_argument("--output-dir", default="agent_output", help="Output directory.")
     parser.add_argument("--model", default=None,
-                        help="LLM model name (defaults to llama-3.3-70b-versatile for Groq, deepseek-chat for DeepSeek).")
+                        help="LLM model name (defaults: gemini-2.5-flash for Gemini, openai/gpt-oss-120b for Groq, deepseek-chat for DeepSeek).")
     parser.add_argument("--base-url", default=None,
                         help="Custom LLM API base URL (e.g. https://api.groq.com/openai/v1).")
     parser.add_argument("--quiet", action="store_true", default=False)

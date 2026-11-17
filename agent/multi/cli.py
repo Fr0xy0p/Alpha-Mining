@@ -55,7 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dataset-id", default="",
                         help="WQ dataset ID (optional).")
     parser.add_argument("--model", default=None,
-                        help="LLM model name (defaults to llama-3.3-70b-versatile for Groq).")
+                        help="LLM model name (defaults: gemini-2.5-flash for Gemini, openai/gpt-oss-120b for Groq, deepseek-chat for DeepSeek).")
     parser.add_argument("--base-url", default=None,
                         help="Custom LLM API base URL.")
     parser.add_argument("--verbose", action="store_true",

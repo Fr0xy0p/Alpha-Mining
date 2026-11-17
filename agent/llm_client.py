@@ -1,9 +1,9 @@
 """
 agent/llm_client.py — Unified LLM API client for factor analysis agent.
 
-Supports Groq, DeepSeek, and any OpenAI-compatible chat completion APIs.
-Credentials loaded from GROQ_API_KEY, DEEPSEEK_API_KEY, OPENAI_API_KEY,
-or .env file.
+Supports Google Gemini Flash, Groq, DeepSeek, and any OpenAI-compatible chat completion APIs.
+Credentials loaded from GEMINI_API_KEY, GOOGLE_API_KEY, GROQ_API_KEY, DEEPSEEK_API_KEY,
+OPENAI_API_KEY, or .env file.
 """
 
 import json
@@ -17,6 +17,9 @@ import requests
 
 
 # Defaults
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
+GEMINI_DEFAULT_MODEL = "gemini-2.5-flash"
+
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 GROQ_DEFAULT_MODEL = "openai/gpt-oss-120b"
 
@@ -49,11 +52,12 @@ def load_api_key(env_var: Optional[str] = None) -> str:
     """Load API key from .env or environment variables.
 
     If env_var is specified, attempts to load that specific key.
-    Otherwise checks in order:
-      1. GROQ_API_KEY
-      2. DEEPSEEK_API_KEY
-      3. OPENAI_API_KEY
-      4. LLM_API_KEY
+    Otherwise checks in order based on LLM_PROVIDER or candidate priority:
+      1. GEMINI_API_KEY / GOOGLE_API_KEY
+      2. GROQ_API_KEY
+      3. DEEPSEEK_API_KEY
+      4. OPENAI_API_KEY
+      5. LLM_API_KEY
     """
     env_file_vars = _read_env_file()
 
@@ -67,8 +71,48 @@ def load_api_key(env_var: Optional[str] = None) -> str:
             f"{env_var} not found. Set it in .env or as an environment variable."
         )
 
-    # Auto-detect from candidate environment variables (prioritizing Groq)
-    for candidate in ("GROQ_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY", "LLM_API_KEY"):
+    # If provider or model is explicitly Gemini, prioritize Gemini keys
+    provider = (
+        os.environ.get("LLM_PROVIDER")
+        or env_file_vars.get("LLM_PROVIDER")
+        or ""
+    ).lower()
+    model = (
+        os.environ.get("LLM_MODEL")
+        or env_file_vars.get("LLM_MODEL")
+        or ""
+    ).lower()
+
+    if provider == "gemini" or "gemini" in model:
+        for candidate in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):
+            if candidate in env_file_vars and env_file_vars[candidate]:
+                return env_file_vars[candidate]
+            val = os.environ.get(candidate)
+            if val:
+                return val
+    elif provider == "groq" or "groq" in model:
+        if "GROQ_API_KEY" in env_file_vars and env_file_vars["GROQ_API_KEY"]:
+            return env_file_vars["GROQ_API_KEY"]
+        val = os.environ.get("GROQ_API_KEY")
+        if val:
+            return val
+    elif provider == "deepseek" or "deepseek" in model:
+        if "DEEPSEEK_API_KEY" in env_file_vars and env_file_vars["DEEPSEEK_API_KEY"]:
+            return env_file_vars["DEEPSEEK_API_KEY"]
+        val = os.environ.get("DEEPSEEK_API_KEY")
+        if val:
+            return val
+
+    # Candidate order when no specific provider/model is pinned
+    candidates = (
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "GROQ_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "OPENAI_API_KEY",
+        "LLM_API_KEY",
+    )
+    for candidate in candidates:
         if candidate in env_file_vars and env_file_vars[candidate]:
             return env_file_vars[candidate]
         val = os.environ.get(candidate)
@@ -76,7 +120,7 @@ def load_api_key(env_var: Optional[str] = None) -> str:
             return val
 
     raise RuntimeError(
-        "No LLM API key found. Please set GROQ_API_KEY or DEEPSEEK_API_KEY in .env or as an environment variable."
+        "No LLM API key found. Please set GEMINI_API_KEY, GROQ_API_KEY, or DEEPSEEK_API_KEY in .env or as an environment variable."
     )
 
 
@@ -115,7 +159,7 @@ def _extract_json(text: str) -> dict:
 
 
 class LLMClient:
-    """Lightweight client for OpenAI-compatible chat APIs (Groq, DeepSeek, OpenAI)."""
+    """Lightweight client for OpenAI-compatible chat APIs (Gemini Flash, Groq, DeepSeek, OpenAI)."""
 
     def __init__(
         self,
@@ -131,11 +175,42 @@ class LLMClient:
         self.api_key = api_key or load_api_key()
 
         # 2. Detect provider
-        is_groq = (
-            self.api_key.startswith("gsk_")
-            or "GROQ_API_KEY" in env_file_vars
-            or "GROQ_API_KEY" in os.environ
-            or (base_url and "groq.com" in base_url)
+        explicit_model = (
+            model
+            or os.environ.get("LLM_MODEL")
+            or env_file_vars.get("LLM_MODEL")
+            or ""
+        )
+        explicit_base_url = (
+            base_url
+            or os.environ.get("LLM_BASE_URL")
+            or env_file_vars.get("LLM_BASE_URL")
+            or ""
+        )
+        provider = (
+            os.environ.get("LLM_PROVIDER")
+            or env_file_vars.get("LLM_PROVIDER")
+            or ""
+        ).lower()
+
+        is_gemini = (
+            provider == "gemini"
+            or "gemini" in explicit_model.lower()
+            or "generativelanguage.googleapis.com" in explicit_base_url
+            or self.api_key.startswith("AIza")
+            or (self.api_key == env_file_vars.get("GEMINI_API_KEY"))
+            or (self.api_key == env_file_vars.get("GOOGLE_API_KEY"))
+            or (self.api_key == os.environ.get("GEMINI_API_KEY"))
+            or (self.api_key == os.environ.get("GOOGLE_API_KEY"))
+        )
+
+        is_groq = not is_gemini and (
+            provider == "groq"
+            or self.api_key.startswith("gsk_")
+            or "groq.com" in explicit_base_url
+            or ("llama" in explicit_model.lower() or "gpt-oss" in explicit_model.lower())
+            or (self.api_key == env_file_vars.get("GROQ_API_KEY"))
+            or (self.api_key == os.environ.get("GROQ_API_KEY"))
         )
 
         # 3. Resolve base_url
@@ -143,15 +218,38 @@ class LLMClient:
             base_url = (
                 os.environ.get("LLM_BASE_URL")
                 or env_file_vars.get("LLM_BASE_URL")
-                or os.environ.get("GROQ_BASE_URL")
-                or env_file_vars.get("GROQ_BASE_URL")
             )
             if not base_url:
-                base_url = GROQ_BASE_URL if is_groq else DEEPSEEK_BASE_URL
+                if is_gemini:
+                    base_url = (
+                        os.environ.get("GEMINI_BASE_URL")
+                        or env_file_vars.get("GEMINI_BASE_URL")
+                        or GEMINI_BASE_URL
+                    )
+                elif is_groq:
+                    base_url = (
+                        os.environ.get("GROQ_BASE_URL")
+                        or env_file_vars.get("GROQ_BASE_URL")
+                        or GROQ_BASE_URL
+                    )
+                else:
+                    base_url = (
+                        os.environ.get("DEEPSEEK_BASE_URL")
+                        or env_file_vars.get("DEEPSEEK_BASE_URL")
+                        or DEEPSEEK_BASE_URL
+                    )
         self.base_url = base_url.rstrip("/")
 
         # 4. Resolve model
-        if is_groq and (not model or model == "deepseek-chat"):
+        if is_gemini and (not model or model == "deepseek-chat"):
+            model = (
+                os.environ.get("LLM_MODEL")
+                or env_file_vars.get("LLM_MODEL")
+                or os.environ.get("GEMINI_MODEL")
+                or env_file_vars.get("GEMINI_MODEL")
+                or GEMINI_DEFAULT_MODEL
+            )
+        elif is_groq and (not model or model == "deepseek-chat"):
             model = (
                 os.environ.get("LLM_MODEL")
                 or env_file_vars.get("LLM_MODEL")
@@ -163,10 +261,19 @@ class LLMClient:
             model = (
                 os.environ.get("LLM_MODEL")
                 or env_file_vars.get("LLM_MODEL")
-                or (GROQ_DEFAULT_MODEL if "groq.com" in self.base_url else DEEPSEEK_DEFAULT_MODEL)
+                or (
+                    GEMINI_DEFAULT_MODEL
+                    if "googleapis.com" in self.base_url
+                    else (
+                        GROQ_DEFAULT_MODEL
+                        if "groq.com" in self.base_url
+                        else DEEPSEEK_DEFAULT_MODEL
+                    )
+                )
             )
         self.model = model
-
+        self.is_gemini = is_gemini
+        self.is_groq = is_groq
         self.max_retries = max_retries
         self.timeout = timeout
 
@@ -199,6 +306,9 @@ class LLMClient:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        if self.is_gemini:
+            headers["x-goog-api-key"] = self.api_key
+
         return {
             "headers": headers,
             "model": self.model,

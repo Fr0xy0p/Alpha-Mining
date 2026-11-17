@@ -93,9 +93,10 @@ Configure the following variables in a `.env` file at the project root or in you
 | --- | --- | --- |
 | `BRAIN_USERNAME` | WorldQuant Brain account username | Backtest authentication & submission |
 | `BRAIN_PASSWORD` | WorldQuant Brain account password | Backtest authentication & submission |
-| `GROQ_API_KEY` | Groq API key (`gsk_...`) | Agent LLM reasoning (default: `llama-3.3-70b-versatile`) |
+| `GEMINI_API_KEY` | Google Gemini API key (`AIza...`) | Agent LLM reasoning (default: `gemini-2.5-flash`) |
+| `GROQ_API_KEY` | Groq API key (`gsk_...`) | Agent LLM reasoning (default: `openai/gpt-oss-120b`) |
 | `DEEPSEEK_API_KEY` | DeepSeek API key (alternative) | Agent LLM reasoning (default: `deepseek-chat`) |
-| `LLM_MODEL` *(optional)* | Custom model name | Override default model (e.g. `llama-3.3-70b-versatile`) |
+| `LLM_MODEL` *(optional)* | Custom model name | Override default model (e.g. `gemini-2.5-flash`, `gemini-2.0-flash`) |
 | `LLM_BASE_URL` *(optional)* | Custom API base URL | Custom OpenAI-compatible endpoint |
 
 *(Optional)* Network proxies can be set via `HTTP_PROXY` and `HTTPS_PROXY` if required by your network environment.
