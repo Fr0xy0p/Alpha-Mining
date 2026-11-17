@@ -18,7 +18,7 @@ import requests
 
 # Defaults
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
-GEMINI_DEFAULT_MODEL = "gemini-2.5-flash"
+GEMINI_DEFAULT_MODEL = "gemini-3-flash-preview"
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 GROQ_DEFAULT_MODEL = "openai/gpt-oss-120b"
@@ -193,25 +193,31 @@ class LLMClient:
             or ""
         ).lower()
 
-        is_gemini = (
-            provider == "gemini"
-            or "gemini" in explicit_model.lower()
-            or "generativelanguage.googleapis.com" in explicit_base_url
-            or self.api_key.startswith("AIza")
-            or (self.api_key == env_file_vars.get("GEMINI_API_KEY"))
-            or (self.api_key == env_file_vars.get("GOOGLE_API_KEY"))
-            or (self.api_key == os.environ.get("GEMINI_API_KEY"))
-            or (self.api_key == os.environ.get("GOOGLE_API_KEY"))
-        )
-
-        is_groq = not is_gemini and (
-            provider == "groq"
-            or self.api_key.startswith("gsk_")
-            or "groq.com" in explicit_base_url
-            or ("llama" in explicit_model.lower() or "gpt-oss" in explicit_model.lower())
-            or (self.api_key == env_file_vars.get("GROQ_API_KEY"))
-            or (self.api_key == os.environ.get("GROQ_API_KEY"))
-        )
+        if self.api_key.startswith("AIza") or self.api_key.startswith("AQ."):
+            is_gemini = True
+            is_groq = False
+        elif self.api_key.startswith("gsk_"):
+            is_gemini = False
+            is_groq = True
+        else:
+            is_gemini = (
+                provider == "gemini"
+                or (model and "gemini" in model.lower())
+                or (not model and "gemini" in explicit_model.lower() and not self.api_key.startswith("sk-"))
+                or "generativelanguage.googleapis.com" in explicit_base_url
+                or (self.api_key == env_file_vars.get("GEMINI_API_KEY"))
+                or (self.api_key == env_file_vars.get("GOOGLE_API_KEY"))
+                or (self.api_key == os.environ.get("GEMINI_API_KEY"))
+                or (self.api_key == os.environ.get("GOOGLE_API_KEY"))
+            )
+            is_groq = not is_gemini and (
+                provider == "groq"
+                or "groq.com" in explicit_base_url
+                or (model and ("llama" in model.lower() or "gpt-oss" in model.lower()))
+                or (not model and ("llama" in explicit_model.lower() or "gpt-oss" in explicit_model.lower()))
+                or (self.api_key == env_file_vars.get("GROQ_API_KEY"))
+                or (self.api_key == os.environ.get("GROQ_API_KEY"))
+            )
 
         # 3. Resolve base_url
         if not base_url:
@@ -241,27 +247,28 @@ class LLMClient:
         self.base_url = base_url.rstrip("/")
 
         # 4. Resolve model
-        if is_gemini and (not model or model == "deepseek-chat"):
-            model = (
-                os.environ.get("LLM_MODEL")
-                or env_file_vars.get("LLM_MODEL")
-                or os.environ.get("GEMINI_MODEL")
-                or env_file_vars.get("GEMINI_MODEL")
-                or GEMINI_DEFAULT_MODEL
-            )
-        elif is_groq and (not model or model == "deepseek-chat"):
-            model = (
-                os.environ.get("LLM_MODEL")
-                or env_file_vars.get("LLM_MODEL")
-                or os.environ.get("GROQ_MODEL")
-                or env_file_vars.get("GROQ_MODEL")
-                or GROQ_DEFAULT_MODEL
-            )
+        env_model = os.environ.get("LLM_MODEL") or env_file_vars.get("LLM_MODEL")
+        if is_gemini:
+            if not model or model in ("deepseek-chat", "gemini-2.5-flash"):
+                model = (
+                    (env_model if env_model and "gemini" in env_model.lower() else None)
+                    or os.environ.get("GEMINI_MODEL")
+                    or env_file_vars.get("GEMINI_MODEL")
+                    or GEMINI_DEFAULT_MODEL
+                )
+        elif is_groq:
+            if not model or model == "deepseek-chat":
+                model = (
+                    (env_model if env_model and any(k in env_model.lower() for k in ("llama", "gpt-oss", "groq", "qwen")) else None)
+                    or os.environ.get("GROQ_MODEL")
+                    or env_file_vars.get("GROQ_MODEL")
+                    or GROQ_DEFAULT_MODEL
+                )
         elif not model:
-            model = (
-                os.environ.get("LLM_MODEL")
-                or env_file_vars.get("LLM_MODEL")
-                or (
+            if env_model and "deepseek" in env_model.lower():
+                model = env_model
+            else:
+                model = (
                     GEMINI_DEFAULT_MODEL
                     if "googleapis.com" in self.base_url
                     else (
@@ -270,7 +277,6 @@ class LLMClient:
                         else DEEPSEEK_DEFAULT_MODEL
                     )
                 )
-            )
         self.model = model
         self.is_gemini = is_gemini
         self.is_groq = is_groq

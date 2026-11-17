@@ -23,12 +23,17 @@ class TestLLMClientGemini(unittest.TestCase):
     """Test Gemini Flash auto-detection and configuration."""
 
     def test_gemini_key_auto_detection(self):
-        """Keys starting with AIza should automatically configure Gemini endpoint & model."""
+        """Keys starting with AIza or AQ. should automatically configure Gemini endpoint & model."""
         client = LLMClient(api_key="AIzaSyMockGeminiKey1234567890")
         self.assertTrue(client.is_gemini)
         self.assertFalse(client.is_groq)
         self.assertEqual(client.base_url, GEMINI_BASE_URL)
         self.assertEqual(client.model, GEMINI_DEFAULT_MODEL)
+
+        client_aq = LLMClient(api_key="AQ.MockGeminiKey1234567890")
+        self.assertTrue(client_aq.is_gemini)
+        self.assertEqual(client_aq.base_url, GEMINI_BASE_URL)
+        self.assertEqual(client_aq.model, GEMINI_DEFAULT_MODEL)
 
     def test_gemini_custom_model(self):
         """User can specify custom Gemini models like gemini-2.0-flash."""
