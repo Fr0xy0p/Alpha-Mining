@@ -1,16 +1,16 @@
 """
-端到端验证脚本：测试所有改进点是否正确工作。
-不依赖 Brain API, 使用 mock 数据进行本地验证。
+End-to-end validation script: test that all improvements are working properly.
+Does not depend on the Brain API, uses mock data for local validation.
 """
 import json
 import sys
 import traceback
 from pathlib import Path
 
-# 将项目目录加入 sys.path
+# Add project root to sys.path
 sys.path.insert(0, str(Path(__file__).parent))
 
-# ─── 导入被测模块 ─────────────────────────────────────────────────────────────
+# ─── Import modules under test ────────────────────────────────────────────────
 from pipeline.main import (
     apply_dataset_field_domain,
     build_dataset_field_candidates,
@@ -43,7 +43,7 @@ def run_test(name: str, fn):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 测试 1：fallback_to_all=False 时，空过滤结果应抛出 ValueError
+# Test 1: When fallback_to_all=False, an empty filter result should raise ValueError
 # ═══════════════════════════════════════════════════════════════════════════════
 def test_fallback_false_raises():
     datafields = ["historical_volatility_30d", "historical_volatility_60d", "parkinson_vol_20d"]
@@ -62,7 +62,7 @@ def test_fallback_false_raises():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 测试 2：fallback_to_all=True 时，空过滤结果应回退到全量并打印警告
+# Test 2: When fallback_to_all=True, an empty filter result falls back to all fields
 # ═══════════════════════════════════════════════════════════════════════════════
 def test_fallback_true_returns_all():
     datafields = ["historical_volatility_30d", "parkinson_vol_20d"]
@@ -78,7 +78,7 @@ def test_fallback_true_returns_all():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 测试 3：正确的 include_regex 应只返回匹配的字段
+# Test 3: Correct include_regex should return only matching fields
 # ═══════════════════════════════════════════════════════════════════════════════
 def test_include_regex_correct():
     datafields = [
@@ -98,7 +98,7 @@ def test_include_regex_correct():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 测试 4：probe_mode=True 时，应使用 representative_values
+# Test 4: When probe_mode=True, representative_values should be used
 # ═══════════════════════════════════════════════════════════════════════════════
 def test_probe_mode_uses_representative_values():
     slot_def = {
@@ -118,7 +118,7 @@ def test_probe_mode_uses_representative_values():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 测试 5：compute_pipeline_core_id 应正确提取 core_slots 定义的字段
+# Test 5: compute_pipeline_core_id should correctly extract core_slots fields
 # ═══════════════════════════════════════════════════════════════════════════════
 def test_compute_pipeline_core_id():
     template = {
@@ -138,7 +138,7 @@ def test_compute_pipeline_core_id():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 测试 6：iter_template_expressions 在 probe 模式下生成更少的因子
+# Test 6: iter_template_expressions generates fewer factors in probe mode
 # ═══════════════════════════════════════════════════════════════════════════════
 def test_probe_mode_reduces_count():
     template = {
@@ -173,7 +173,7 @@ def test_probe_mode_reduces_count():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 测试 7：iter_template_expressions 返回的每个元素都包含 pipeline_core_id
+# Test 7: iter_template_expressions returns pipeline_core_id in every tuple
 # ═══════════════════════════════════════════════════════════════════════════════
 def test_iter_returns_pipeline_core_id():
     template = {
@@ -198,7 +198,7 @@ def test_iter_returns_pipeline_core_id():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 测试 8：template_catalog.json 中的 IVHV 模板配置正确
+# Test 8: IVHV template configuration in template_catalog.json is valid
 # ═══════════════════════════════════════════════════════════════════════════════
 def test_template_catalog_ivhv():
     catalog = load_template_catalog(Path("template_catalog.json"))
@@ -231,7 +231,7 @@ def test_template_catalog_ivhv():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 测试 9：build_core_summary 正确聚合 Core 级别指标
+# Test 9: build_core_summary aggregates core-level metrics correctly
 # ═══════════════════════════════════════════════════════════════════════════════
 def test_build_core_summary():
     mock_rows = [
@@ -266,7 +266,7 @@ def test_build_core_summary():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 测试 10：classify_core 决策逻辑
+# Test 10: classify_core decision logic
 # ═══════════════════════════════════════════════════════════════════════════════
 def test_classify_core():
     def make_stats(sharpe_mean, fitness_mean=None, turnover_mean=None, probe_count=3):
@@ -286,7 +286,7 @@ def test_classify_core():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 测试 11：adaptive_scheduler 的 aggregate_by_core
+# Test 11: adaptive_scheduler aggregate_by_core
 # ═══════════════════════════════════════════════════════════════════════════════
 def test_aggregate_by_core():
     mock_results = [
@@ -326,7 +326,7 @@ def test_aggregate_by_core():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 运行所有测试
+# Run All Tests
 # ═══════════════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
     print("=" * 60)

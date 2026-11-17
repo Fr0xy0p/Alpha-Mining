@@ -1,6 +1,6 @@
 """
-@deprecated: 已迁移至 agent.direct.cli 和 agent.direct.agent
-请使用: python -m agent.direct.cli
+@deprecated: Migrated to agent.direct.cli and agent.direct.agent
+Please use: python -m agent.direct.cli
 """
 
 from agent.direct.agent import DirectAgent  # noqa: F401

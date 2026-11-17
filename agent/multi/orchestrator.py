@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from agent.config import AgentConfig
 from agent.multi.explorer import Explorer
@@ -61,6 +61,8 @@ class OrchestratorV2:
         config: AgentConfig | None = None,
         output_dir: str = "agent_output",
         dataset_id: str = "",
+        model: Optional[str] = None,
+        base_url: Optional[str] = None,
     ):
         self.config = config or AgentConfig()
         self.dataset_id = dataset_id
@@ -71,7 +73,7 @@ class OrchestratorV2:
 
         # Components.
         self.tools = WQTools()
-        self.llm = LLMClient()
+        self.llm = LLMClient(model=model, base_url=base_url)
         self.results_store = ResultsStore(
             path=self.output_dir / "results_db.json"
         ) if self.config.reuse_results_db else ResultsStore(

@@ -15,14 +15,14 @@ remote_results/
 
 agent_output/
 
-# Claude 配置
+# Claude configuration
 .claude/
 
-# 数据字段缓存
+# Datafields cache
 datafields_cache/
 
-# 文档目录
+# Documentation directory
 docs/
 
-# VS Code 本地配置
+# VS Code local configuration
 .vscode/

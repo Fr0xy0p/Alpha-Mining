@@ -1,11 +1,11 @@
 """
-result_filter.py — 回测结果过滤与 Core 级别聚合分析
+result_filter.py — Backtest result filtering and Core-level aggregate analysis
 
-改进内容：
-    - 新增 --group-by-core 模式：按 pipeline_core_id 聚合统计，输出 Core 级别的表现摘要
-    - collect_result_rows 现在会读取 pipeline_core_id 和 pipeline_template_id 字段（来自新格式的批次文件）
-  - 新增 --core-summary-output 参数：将 Core 级别摘要写入 JSON 文件
-  - 原有的因子级别过滤功能保持不变
+Features:
+    - --group-by-core mode: Aggregates statistics by pipeline_core_id and outputs Core-level summaries
+    - collect_result_rows reads pipeline_core_id and pipeline_template_id metadata
+    - --core-summary-output parameter: Writes Core-level summaries to a JSON file
+    - Factor-level filtering functionality remains intact
 """
 
 import argparse
@@ -63,7 +63,7 @@ def _extract_metric(result_item: dict, metric_name: str):
 
 
 def _load_source_batch_meta(source_batch_path: str) -> dict[int, dict]:
-    """从源批次文件中读取 pipeline_core_id / pipeline_template_id 的 index → meta 映射。"""
+    """Read index -> meta mapping of pipeline_core_id / pipeline_template_id from source batch file."""
     if not source_batch_path:
         return {}
     try:
@@ -117,7 +117,7 @@ def collect_result_rows(results_dir: Path) -> list[dict]:
                 "fitness": _extract_metric(item, "fitness"),
                 "returns": _extract_metric(item, "returns"),
                 "turnover": _extract_metric(item, "turnover"),
-                # ── 新增字段 ──
+                # ── Metadata fields ──
                 "pipeline_core_id": pipeline_core_id,
                 "pipeline_template_id": pipeline_template_id,
             }
@@ -150,7 +150,7 @@ def passes_filters(row: dict, args) -> bool:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 新增：Core 级别聚合分析
+# Core-Level Aggregate Analysis
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_core_summary(rows: list[dict]) -> list[dict]:
@@ -259,7 +259,7 @@ def main() -> None:
     parser.add_argument("--sort-by", choices=["sharpe", "fitness", "returns", "turnover"], default="sharpe")
     parser.add_argument("--limit", type=int, default=50, help="Maximum number of rows to return.")
     parser.add_argument("--output", default="", help="Optional output JSON file for filtered factor rows.")
-    # ── 新增参数 ──
+    # ── Parameters ──
     parser.add_argument(
         "--group-by-core",
         action="store_true",
@@ -282,7 +282,7 @@ def main() -> None:
 
     rows = collect_result_rows(results_dir)
 
-    # ── Core 级别聚合模式 ──
+    # ── Core-level aggregation mode ──
     if args.group_by_core:
         summaries = build_core_summary(rows)
         print_core_summary_table(summaries, limit=args.limit)
@@ -299,7 +299,7 @@ def main() -> None:
             print(f"Core summary saved to: {output_path}")
         return
 
-    # ── 原有因子级别过滤模式 ──
+    # ── Factor-level filtering mode ──
     filtered = [row for row in rows if passes_filters(row, args)]
 
     reverse = args.sort_by != "turnover"

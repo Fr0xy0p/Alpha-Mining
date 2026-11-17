@@ -11,7 +11,7 @@ from agent.config import (
 class ResponseProcessor:
     """Processes LLM analysis responses: phase dispatch, submission, convergence.
 
-    This is the most协作-intensive component.  It coordinates across all
+    This is the most collaboration-intensive component.  It coordinates across all
     other services:
 
     * ``llm_conv`` — to send/receive messages and execute tool calls

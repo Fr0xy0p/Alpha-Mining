@@ -54,6 +54,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Output directory for session data.")
     parser.add_argument("--dataset-id", default="",
                         help="WQ dataset ID (optional).")
+    parser.add_argument("--model", default=None,
+                        help="LLM model name (defaults to llama-3.3-70b-versatile for Groq).")
+    parser.add_argument("--base-url", default=None,
+                        help="Custom LLM API base URL.")
     parser.add_argument("--verbose", action="store_true",
                         help="Enable verbose logging.")
     return parser
@@ -82,7 +86,7 @@ def main() -> None:
         from datetime import datetime
         tools = WQTools()
         tools.login()
-        llm = LLMClient()
+        llm = LLMClient(model=args.model, base_url=args.base_url)
         scout_log_dir = Path(args.output_dir) / f"scout_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         scout = IdeaScout(tools, llm, log_dir=scout_log_dir)
         ideas = scout.discover(dataset_id=args.dataset_id)
@@ -97,6 +101,8 @@ def main() -> None:
         config=config,
         output_dir=args.output_dir,
         dataset_id=args.dataset_id,
+        model=args.model,
+        base_url=args.base_url,
     )
     report = orch.run(idea=idea, expression=args.expression)
 

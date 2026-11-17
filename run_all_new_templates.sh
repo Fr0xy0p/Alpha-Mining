@@ -1,7 +1,7 @@
 #!/bin/bash
-# run_all_new_templates.sh — 跑完 template_catalog_mixed.json 全部 15 个模板的完整 Pipeline
-# 用法: bash run_all_new_templates.sh
-# 推荐: tmux new-session -d -s alphamining 'bash run_all_new_templates.sh'
+# run_all_new_templates.sh — Run full pipeline across all 15 templates in template_catalog_mixed.json
+# Usage: bash run_all_new_templates.sh
+# Recommended: tmux new-session -d -s alphamining 'bash run_all_new_templates.sh'
 
 set -e
 
@@ -12,11 +12,11 @@ LOG_DIR="pipeline_logs"
 REPORT_DIR="pipeline_reports"
 mkdir -p "$LOG_DIR" "$REPORT_DIR"
 
-# Python 命令（按环境调整）
+# Python command (adjust per environment)
 PYTHON_CMD="python"
 
 # ══════════════════════════════════════════════════════════════════════
-# 模板分组（template_catalog_mixed.json）
+# Template Groups (template_catalog_mixed.json)
 # ══════════════════════════════════════════════════════════════════════
 
 PV1_TEMPLATES="\
@@ -49,7 +49,7 @@ NEWS12_TEMPLATES="\
 TPL_NEWS_REACTION_TS_V1"
 
 # ══════════════════════════════════════════════════════════════════════
-# 通用 Pipeline 函数
+# Common Pipeline Function
 # ══════════════════════════════════════════════════════════════════════
 
 run_pipeline() {
@@ -95,7 +95,7 @@ run_pipeline() {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# 执行全部 7 个 Pipeline（串行）
+# Execute All 7 Pipelines (Sequential)
 # ══════════════════════════════════════════════════════════════════════
 
 ALL_EXIT=0
@@ -109,7 +109,7 @@ run_pipeline "socialmedia12" "$SOCIAL12_TEMPLATES" "6/7"   || ALL_EXIT=1
 run_pipeline "news12"        "$NEWS12_TEMPLATES"  "7/7"   || ALL_EXIT=1
 
 # ══════════════════════════════════════════════════════════════════════
-# 汇总
+# Summary
 # ══════════════════════════════════════════════════════════════════════
 
 echo ""

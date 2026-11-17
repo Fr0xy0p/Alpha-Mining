@@ -41,7 +41,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--target-sharpe", type=float, default=TARGET_SHARPE,
                         help="Convergence target.")
     parser.add_argument("--output-dir", default="agent_output", help="Output directory.")
-    parser.add_argument("--model", default="deepseek-chat", help="LLM model name.")
+    parser.add_argument("--model", default=None,
+                        help="LLM model name (defaults to llama-3.3-70b-versatile for Groq, deepseek-chat for DeepSeek).")
+    parser.add_argument("--base-url", default=None,
+                        help="Custom LLM API base URL (e.g. https://api.groq.com/openai/v1).")
     parser.add_argument("--quiet", action="store_true", default=False)
     return parser
 
@@ -77,6 +80,7 @@ def main() -> None:
         dataset_id=args.dataset_id,
         api_key=api_key,
         model=args.model,
+        base_url=args.base_url,
         output_dir=args.output_dir,
         quiet=args.quiet,
         max_iterations=args.iterations,

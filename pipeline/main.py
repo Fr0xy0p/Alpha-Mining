@@ -168,9 +168,9 @@ def ordered_placeholders(expression: str) -> list[str]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 改进 2.1：修复 search_domain 字段过滤逻辑
-#   - fallback_to_all 默认改为 False，过滤结果为空时抛出异常而非静默回退
-#   - 新增 require_match 参数：当为 True 时，过滤结果为空直接 raise，不允许 fallback
+# Search domain field filtering logic
+#   - fallback_to_all defaults to False: raises exception on empty matches instead of silent fallback
+#   - require_match: when True, directly raises on empty matches without fallback
 # ─────────────────────────────────────────────────────────────────────────────
 def apply_dataset_field_domain(datafields: list[str], slot_def: dict, slot_name: str = "") -> list[str]:
     """Apply search_domain filters to narrow down dataset field candidates.
@@ -259,9 +259,9 @@ def build_dataset_field_candidates(template: dict, datafields: list[str], field_
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 改进 2.2：resolve_slot_values 支持 probe_mode
-#   - probe_mode=True 时，优先使用 slot 定义中的 representative_values
-#   - 这使得探测批次只使用少量代表性参数，而非全量笛卡尔积
+# resolve_slot_values with probe_mode support
+#   - probe_mode=True uses representative_values from slot definitions
+#   - Produces a compact probe batch instead of a full Cartesian product
 # ─────────────────────────────────────────────────────────────────────────────
 def resolve_slot_values(
     slot_name: str,
@@ -338,10 +338,10 @@ def combo_matches_constraints(combo: dict[str, str], constraints: dict) -> bool:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 改进 3.1：iter_template_expressions 携带 pipeline_core_id 元数据
-#   - 返回 (expression, core_id) 而非仅 expression
-#   - core_id 由模板定义的 core_slots 字段决定（哪些 slot 构成 Core）
-#   - 若未定义 core_slots，则以所有 dataset_field 类型的 slot 作为 Core
+# iter_template_expressions attaches pipeline_core_id metadata
+#   - Returns (expression, core_id) rather than just expression
+#   - core_id is determined by core_slots in the template
+#   - If core_slots is undefined, all dataset_field slots constitute the Core
 # ─────────────────────────────────────────────────────────────────────────────
 def compute_pipeline_core_id(template: dict, combo: dict[str, str]) -> str:
     """Derive a stable pipeline_core_id from the combination of core-defining slots.
@@ -453,7 +453,7 @@ def iter_alpha_requests(
                     "type": "REGULAR",
                     "settings": settings,
                     "regular": expression,
-                    # ── 改进 3.2：在每条因子记录中携带 pipeline_core_id 和 pipeline_template_id ──
+                    # ── Attach pipeline_core_id and pipeline_template_id to each factor record ──
                     "pipeline_core_id": pipeline_core_id,
                     "pipeline_template_id": template["template_id"],
                 }
@@ -576,7 +576,7 @@ def main() -> None:
     parser.add_argument("--search", default="", help="Optional search term for field fetch.")
     parser.add_argument("--test-years", type=int, default=1, help="Metadata only: test period years.")
     parser.add_argument("--test-months", type=int, default=0, help="Metadata only: test period months.")
-    # ── 改进 2.3：新增 --probe 模式开关 ──
+    # ── Option for --probe mode ──
     parser.add_argument(
         "--probe",
         action="store_true",
@@ -658,7 +658,7 @@ def main() -> None:
         probe_mode=args.probe,
     )
 
-    # ── 改进 3.3：在 generation_context 中记录 probe_mode ──
+    # ── Record probe_mode in generation_context ──
     written_files = write_factor_batches(
         alpha_iter=alpha_iter,
         output_dir=Path(args.output_dir),

@@ -1,6 +1,6 @@
 """
-@deprecated: 已迁移至 agent.multi.cli
-请使用: python -m agent.multi.cli
+@deprecated: Migrated to agent.multi.cli
+Please use: python -m agent.multi.cli
 """
 
 from agent.multi.cli import build_parser, main  # noqa: F401

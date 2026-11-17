@@ -46,7 +46,7 @@ print(response.status_code)
 
 print(response.json())
  
-## 获取数据集ID为 fundamental6 下的所有数据字段
+## Fetch all data fields under dataset ID fundamental6
 
 def get_datafields(
 
@@ -140,7 +140,7 @@ for datafield in datafields_list:
 
                 for group in group:                  
 
-                    print("正在将如下 Alpha 表达式与 setting 封装")
+                    print("Packaging the following Alpha expression with settings")
 
                     print(f'{group_ops}({ts_ops}({datafield}, {days}), {group})')
 

@@ -1,8 +1,9 @@
 """
-agent_llm_client.py — Unified LLM API client for factor analysis agent.
+agent/llm_client.py — Unified LLM API client for factor analysis agent.
 
-Supports DeepSeek API (OpenAI-compatible format).
-Credentials loaded from DEEPSEEK_API_KEY env var or .env file.
+Supports Groq, DeepSeek, and any OpenAI-compatible chat completion APIs.
+Credentials loaded from GROQ_API_KEY, DEEPSEEK_API_KEY, OPENAI_API_KEY,
+or .env file.
 """
 
 import json
@@ -15,37 +16,67 @@ from typing import Optional
 import requests
 
 
-DEFAULT_MODEL = "deepseek-chat"
-DEFAULT_BASE_URL = "https://api.deepseek.com"
+# Defaults
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+GROQ_DEFAULT_MODEL = "openai/gpt-oss-120b"
+
+DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+DEEPSEEK_DEFAULT_MODEL = "deepseek-chat"
+
 DEFAULT_MAX_RETRIES = 5
 DEFAULT_TIMEOUT = 120
 DEFAULT_TEMPERATURE = 0.3
 DEFAULT_MAX_TOKENS = 4096
 
 
-def load_api_key(env_var: str = "DEEPSEEK_API_KEY") -> str:
-    """Load API key from .env or environment variable.
-
-    Tries the .env file first (looking for the specified key), then
-    falls back to the process environment.  Raises ``RuntimeError``
-    when neither source provides a value.
-    """
+def _read_env_file() -> dict[str, str]:
+    """Read key-value pairs from .env file at the project root."""
     _AGENT_DIR = Path(__file__).resolve().parent
     _PROJECT_ROOT = _AGENT_DIR.parent
     dotenv_path = _PROJECT_ROOT / ".env"
+    env_vars: dict[str, str] = {}
     if dotenv_path.exists():
         with open(dotenv_path, encoding="utf-8") as fh:
             for line in fh:
                 line = line.strip()
-                if line.startswith(env_var) and "=" in line:
-                    return line.split("=", 1)[1].strip().strip('"').strip("'")
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    env_vars[k.strip()] = v.strip().strip('"').strip("'")
+    return env_vars
 
-    api_key = os.environ.get(env_var)
-    if api_key:
-        return api_key
+
+def load_api_key(env_var: Optional[str] = None) -> str:
+    """Load API key from .env or environment variables.
+
+    If env_var is specified, attempts to load that specific key.
+    Otherwise checks in order:
+      1. GROQ_API_KEY
+      2. DEEPSEEK_API_KEY
+      3. OPENAI_API_KEY
+      4. LLM_API_KEY
+    """
+    env_file_vars = _read_env_file()
+
+    if env_var:
+        if env_var in env_file_vars:
+            return env_file_vars[env_var]
+        val = os.environ.get(env_var)
+        if val:
+            return val
+        raise RuntimeError(
+            f"{env_var} not found. Set it in .env or as an environment variable."
+        )
+
+    # Auto-detect from candidate environment variables (prioritizing Groq)
+    for candidate in ("GROQ_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY", "LLM_API_KEY"):
+        if candidate in env_file_vars and env_file_vars[candidate]:
+            return env_file_vars[candidate]
+        val = os.environ.get(candidate)
+        if val:
+            return val
 
     raise RuntimeError(
-        f"{env_var} not found. Set it in .env or as an environment variable."
+        "No LLM API key found. Please set GROQ_API_KEY or DEEPSEEK_API_KEY in .env or as an environment variable."
     )
 
 
@@ -60,7 +91,6 @@ def _extract_json(text: str) -> dict:
     # Strip markdown code fences.
     if text.startswith("```"):
         lines = text.splitlines()
-        # Remove opening fence (```json, ```, etc.)
         start = 1
         end = len(lines)
         if lines[-1].strip() == "```":
@@ -85,23 +115,62 @@ def _extract_json(text: str) -> dict:
 
 
 class LLMClient:
-    """Lightweight client for OpenAI-compatible chat APIs (e.g. DeepSeek)."""
+    """Lightweight client for OpenAI-compatible chat APIs (Groq, DeepSeek, OpenAI)."""
 
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model: str = DEFAULT_MODEL,
-        base_url: str = DEFAULT_BASE_URL,
+        model: Optional[str] = None,
+        base_url: Optional[str] = None,
         max_retries: int = DEFAULT_MAX_RETRIES,
         timeout: int = DEFAULT_TIMEOUT,
     ):
+        env_file_vars = _read_env_file()
+
+        # 1. Resolve API key
         self.api_key = api_key or load_api_key()
-        self.model = model
+
+        # 2. Detect provider
+        is_groq = (
+            self.api_key.startswith("gsk_")
+            or "GROQ_API_KEY" in env_file_vars
+            or "GROQ_API_KEY" in os.environ
+            or (base_url and "groq.com" in base_url)
+        )
+
+        # 3. Resolve base_url
+        if not base_url:
+            base_url = (
+                os.environ.get("LLM_BASE_URL")
+                or env_file_vars.get("LLM_BASE_URL")
+                or os.environ.get("GROQ_BASE_URL")
+                or env_file_vars.get("GROQ_BASE_URL")
+            )
+            if not base_url:
+                base_url = GROQ_BASE_URL if is_groq else DEEPSEEK_BASE_URL
         self.base_url = base_url.rstrip("/")
+
+        # 4. Resolve model
+        if is_groq and (not model or model == "deepseek-chat"):
+            model = (
+                os.environ.get("LLM_MODEL")
+                or env_file_vars.get("LLM_MODEL")
+                or os.environ.get("GROQ_MODEL")
+                or env_file_vars.get("GROQ_MODEL")
+                or GROQ_DEFAULT_MODEL
+            )
+        elif not model:
+            model = (
+                os.environ.get("LLM_MODEL")
+                or env_file_vars.get("LLM_MODEL")
+                or (GROQ_DEFAULT_MODEL if "groq.com" in self.base_url else DEEPSEEK_DEFAULT_MODEL)
+            )
+        self.model = model
+
         self.max_retries = max_retries
         self.timeout = timeout
 
-    # ── public API ────────────────────────────────────────────────────────
+    # ── Public API ────────────────────────────────────────────────────────
 
     def chat(
         self,
@@ -123,7 +192,7 @@ class LLMClient:
         content = self.chat(messages, temperature=temperature)
         return _extract_json(content)
 
-    # ── internals ─────────────────────────────────────────────────────────
+    # ── Internals ─────────────────────────────────────────────────────────
 
     def _build_payload(self, messages, temperature, max_tokens) -> dict:
         headers = {
@@ -156,10 +225,23 @@ class LLMClient:
 
             except requests.HTTPError as exc:
                 status = exc.response.status_code if exc.response is not None else "?"
-                last_error = f"HTTP {status}: {exc}"
+                resp_text = exc.response.text[:300] if exc.response is not None else ""
+                last_error = f"HTTP {status}: {resp_text or exc}"
+
+                # Rate limiting (HTTP 429)
                 if status == 429:
-                    self._backoff(attempt)
+                    retry_after = None
+                    if exc.response is not None and "retry-after" in exc.response.headers:
+                        try:
+                            retry_after = float(exc.response.headers["retry-after"])
+                        except (ValueError, TypeError):
+                            pass
+                    if retry_after is not None:
+                        time.sleep(retry_after + 0.5)
+                    else:
+                        self._backoff(attempt)
                     continue
+
                 if 500 <= status < 600 and attempt < self.max_retries:
                     self._backoff(attempt)
                     continue

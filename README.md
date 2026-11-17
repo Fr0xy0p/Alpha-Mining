@@ -1,188 +1,224 @@
 # AlphaMiningV2
 
-面向 WorldQuant Brain 平台的 **自主 Alpha 因子挖掘系统**。核心是 LLM 驱动的 Direct Agent：像人类量化研究员一样，通过工具调用探索数据集、研究算子、构造 FASTEXPR 表达式、提交回测、分析结果并持续迭代。
+An **Autonomous Alpha Factor Mining System** designed for the WorldQuant Brain platform. At its core is an LLM-driven Direct Agent that operates like a professional quantitative researcher: using tool calls to explore datasets, inspect operators, formulate FASTEXPR alpha expressions, submit backtests, analyze performance metrics, and iteratively refine factors until convergence.
 
 ```
 Research → Submit → Poll → Analyze → Improve → ... → Converge
-         ↕ tools (15个)
+         ↕ tools (15 tools)
   Datasets · Fields · Operators · Settings · Knowledge Base
 ```
 
 ---
 
-## 快速开始
+## Quick Start
 
 ```bash
-# 从投资直觉出发
-python -m agent.direct_agent \
+# Start from investment intuition / idea
+python -m agent.direct.cli \
   --idea "Momentum combined with low volatility"
 
-# 指定数据集，跳过探索步骤
-python -m agent.direct_agent \
+# Specify dataset and jump directly into research
+python -m agent.direct.cli \
   --dataset-id pv13 \
   --idea "Momentum combined with low volatility"
 
-# 改进已有表达式
-python -m agent.direct_agent \
+# Improve an existing expression with a targeted critique
+python -m agent.direct.cli \
   --dataset-id pv13 \
   --expression "group_rank(ts_mean(returns,21),industry)" \
   --critique "High turnover, try longer lookback"
 ```
 
-需要配置凭证，参见[环境配置](#环境配置)。
+Credentials must be configured prior to execution. See [Environment Configuration](#environment-configuration).
 
 ---
 
-## 目录结构
+## Directory Structure
 
 ```
 alphaminingv2/
-├── agent/                           # Agent 核心
-│   ├── direct_agent.py             #   DirectAgent：主入口
-│   ├── wq_tools.py                 #   WQ Brain 工具层（16 个工具）
-│   ├── llm_client.py               #   DeepSeek API 客户端
-│   ├── llm_logger.py               #   LLM 调用日志
-│   ├── expression_validator.py     #   FASTEXPR 语法校验
-│   ├── mutation_engine.py          #   因子变异引擎
-│   ├── result_analyzer.py          #   回测结果 LLM 分析
-│   ├── convergence.py              #   收敛检测
-│   ├── memory.py                   #   会话持久化
-│   ├── feedback_loop.py            #   交互式循环
-│   ├── template_generator.py       #   金融直觉 → 模板（备选）
-│   ├── orchestrator.py             #   模板式 Agent（备选）
+├── agent/                           # Core Agent Framework
+│   ├── direct/                     #   DirectAgent architecture
+│   │   ├── agent.py                #     DirectAgent orchestrator
+│   │   ├── cli.py                  #     CLI entry point
+│   │   ├── job_store.py            #     Job state, results, and convergence tracking
+│   │   ├── llm_conversation.py     #     LLM chat, tool execution & conversation history
+│   │   ├── phase_manager.py        #     Creative/Improvement phase state machine & directions
+│   │   ├── prompt_builder.py       #     Stateless prompt construction
+│   │   ├── response_processor.py   #     LLM response parsing & phase dispatch
+│   │   └── submission_engine.py    #     Factor submission, FIFO queue & polling
+│   ├── wq_tools.py                 #   WorldQuant Brain tool layer (16 callable tools)
+│   ├── llm_client.py               #   OpenAI-compatible / DeepSeek API client
+│   ├── llm_logger.py               #   Structured LLM exchange logger
+│   ├── expression_validator.py     #   FASTEXPR syntax & field validation
+│   ├── prompts.py                  #   System & discovery prompts
 │   │
-│   ├── multi_agent.py              #   多 Agent 入口（实验性）
-│   ├── orchestrator_v2.py          #   多 Agent 编排器
-│   ├── explorer.py                 #   LLM 表达式探索器
-│   ├── param_optimizer.py          #   参数优化器
-│   ├── idea_scout.py               #   因子想法自动发现
-│   ├── expression_fingerprint.py   #   表达式结构去重
-│   ├── results_store.py            #   结果共享数据库
-│   └── config.py                   #   多 Agent 配置
+│   ├── multi/                      #   Multi-Agent framework (experimental)
+│   │   ├── cli.py                  #     Multi-Agent CLI
+│   │   ├── orchestrator.py         #     Multi-Agent orchestrator (OrchestratorV2)
+│   │   ├── explorer.py             #     LLM expression explorer
+│   │   ├── param_optimizer.py      #     Parameter grid optimizer
+│   │   ├── idea_scout.py           #     Autonomous factor idea scout
+│   │   ├── expression_fingerprint.py # Expression structural deduplication
+│   │   └── results_store.py        #     Shared SQLite results database
+│   └── config.py                   #   Agent thresholds & simulation configurations
 │
-├── pipeline/                        # 回测流水线（底层基础设施）
-│   ├── backtest_runner.py          #   并发回测执行引擎
-│   ├── datafields_store.py         #   数据字段缓存
-│   ├── result_filter.py            #   结果筛选与聚合
-│   ├── adaptive_scheduler.py       #   Probe-Expand 调度器
-│   └── run_pipeline.py             #   一键入口
+├── pipeline/                        # Backtest Pipeline (Infrastructure Layer)
+│   ├── backtest_runner.py          #   Concurrent backtest execution engine
+│   ├── datafields_store.py         #   Dataset fields fetcher & local cache
+│   ├── result_filter.py            #   Result filtering & Core-level aggregation
+│   ├── adaptive_scheduler.py       #   Probe-Expand closed-loop scheduler
+│   └── run_pipeline.py             #   All-in-one automated pipeline runner
 │
-├── wq_operators_cleaned.json       # WQ 算子定义
-├── .env.example                    # 环境变量模板
+├── wq_operators_cleaned.json       # Cleaned WorldQuant Brain operator definitions
+├── template_catalog.json           # Expression template catalog
+├── template_catalog_mixed.json     # Multi-dataset template catalog
+├── common_operator_slot_mappings.json # Operator slot definitions
+├── .env.example                    # Environment variable template
 │
-├── agent_output/                   # Agent 会话输出（gitignored）
-├── datafields_cache/               # 数据字段缓存（gitignored）
-└── backtest_results/               # 回测结果（gitignored）
+├── agent_output/                   # Session outputs & logs (gitignored)
+├── datafields_cache/               # Cached data fields (gitignored)
+└── backtest_results/               # Backtest results & reports (gitignored)
 ```
 
 ---
 
-## 环境配置
+## Environment Configuration
 
-### 凭证
+### Credentials
 
-| 变量               | 说明                    | 用途      |
-| ------------------ | ----------------------- | --------- |
-| `BRAIN_USERNAME`   | WorldQuant Brain 用户名 | 回测提交  |
-| `BRAIN_PASSWORD`   | WorldQuant Brain 密码   | 回测提交  |
-| `DEEPSEEK_API_KEY` | DeepSeek API 密钥       | Agent LLM |
+Configure the following variables in a `.env` file at the project root or in your process environment:
 
-放在项目根目录 `.env` 文件或进程环境变量中。
+| Variable | Description | Purpose |
+| --- | --- | --- |
+| `BRAIN_USERNAME` | WorldQuant Brain account username | Backtest authentication & submission |
+| `BRAIN_PASSWORD` | WorldQuant Brain account password | Backtest authentication & submission |
+| `GROQ_API_KEY` | Groq API key (`gsk_...`) | Agent LLM reasoning (default: `llama-3.3-70b-versatile`) |
+| `DEEPSEEK_API_KEY` | DeepSeek API key (alternative) | Agent LLM reasoning (default: `deepseek-chat`) |
+| `LLM_MODEL` *(optional)* | Custom model name | Override default model (e.g. `llama-3.3-70b-versatile`) |
+| `LLM_BASE_URL` *(optional)* | Custom API base URL | Custom OpenAI-compatible endpoint |
 
-### 数据集
+*(Optional)* Network proxies can be set via `HTTP_PROXY` and `HTTPS_PROXY` if required by your network environment.
 
-使用 `datafields_store.py` 缓存目标数据集的字段定义：
+### Data Fields Caching
+
+Before running offline or targeted simulations, fetch and cache target dataset field definitions using `datafields_store.py`:
 
 ```bash
-python pipeline/datafields_store.py --dataset-id pv1
+python pipeline/datafields_store.py --dataset-id pv13
 ```
 
 ---
 
-## 核心概念
+## Core Concepts
 
-### DirectAgent — 事件驱动因子挖掘循环
+### DirectAgent — Event-Driven Factor Mining Loop
 
-LLM 通过 15 个工具与 Brain 平台交互，在一个事件驱动循环中完成从研究到收敛的全流程：
+The LLM interacts with WorldQuant Brain through 15 tools in an event-driven loop, traversing the full research cycle from hypothesis formulation to convergence:
 
 ```
-                    ┌─────────┐
-                    │  Research│
-                    │  探索阶段 │
-                    └────┬────┘
-                         ↓ 投资假设
-              ┌──────────────────┐
-              │  Iteration 循环   │
-              │                  │
-              │  ┌────────────┐  │
-              │  │  Creative   │  │  ← 生成新方向（多方向探索）
-              │  │   Phase     │  │
-              │  └──────┬─────┘  │
-              │         ↓        │
-              │  ┌────────────┐  │
-              │  │ Improvement│  │  ← 深耕现有方向（参数调优）
-              │  │   Phase    │  │     进步停滞 → 切回 Creative
-              │  └────────────┘  │
-              │         ↓        │
-              │   Converge?      │──→ 未达标 → 继续
-              └────────┬─────────┘
-                       ↓ 达标
-                  ┌──────────┐
-                  │   Stop   │
-                  │  收敛退出  │
-                  └──────────┘
+                    ┌──────────────┐
+                    │   Research   │
+                    │ Exploration  │
+                    └──────┬───────┘
+                           ↓ Investment Hypothesis
+              ┌────────────────────────┐
+              │    Iteration Loop      │
+              │                        │
+              │  ┌──────────────────┐  │
+              │  │  Creative Phase  │  │  ← Propose new directions (multi-directional exploration)
+              │  └────────┬─────────┘  │
+              │           ↓            │
+              │  ┌──────────────────┐  │
+              │  │Improvement Phase │  │  ← Deepen existing directions (parameter tuning & mutations)
+              │  └────────┬─────────┘  │     Stall detected → Switch back to Creative
+              │           ↓            │
+              │      Converged?        │──→ Below target → Continue loop
+              └───────────┬────────────┘
+                          ↓ Target achieved
+                    ┌───────────┐
+                    │   Stop    │
+                    │Converged  │
+                    └───────────┘
 ```
 
-#### Phase 状态机
+#### Phase State Machine
 
-迭代阶段分为两种**互斥状态**，由状态机自动切换：
+The iteration cycle alternates between two **mutually exclusive phases** managed by the `PhaseManager`:
 
-| Phase | 行为 | 进入条件 | 切出条件 |
-|-------|------|----------|----------|
-| **Creative** | LLM 从当前结果出发，提出新方向（directions），每个方向附带初始表达式 | 会话开始 / Improvement 达到上限或停滞 | Creative 提交完成后自动切入 Improvement |
-| **Improvement** | LLM 针对已有方向迭代改进表达式，不允许新建方向 | Creative 提交完成后进入 | 达到 8 轮上限 / 连续 5 轮未突破最佳 Sharpe / 所有方向被放弃 |
+| Phase | Behavior | Entry Condition | Transition Condition |
+| --- | --- | --- | --- |
+| **Creative** | The LLM proposes new directions based on current findings, each accompanied by initial expressions | Session start / Improvement limit reached or progress stalled | Automatically switches to **Improvement** after submission is complete |
+| **Improvement** | The LLM refines expressions within existing active directions; creating new directions is disallowed | Entered after Creative submissions are confirmed | Maximum 8 rounds reached / 5 consecutive rounds without Sharpe improvement / all directions abandoned |
 
-两种相位交替运行，构成完整的因子搜索策略：
+These alternating phases balance exploration and exploitation:
+- **Creative Phase** prevents local optima by forcing periodic perspective shifts and new hypotheses.
+- **Improvement Phase** prevents superficial testing by forcing deep refinement and parameter optimization on promising directions.
 
-- **Creative 阶段**防止 LLM 陷入局部最优——强迫定期跳出当前思路，提出新假设
-- **Improvement 阶段**防止 LLM 浅尝辄止——强迫在既有方向上深入改进，积累有效迭代
+Each state transition resets phase counters to give the agent a full turn allocation in the new phase.
 
-每次状态切换都会重置相位计数器，确保 LLM 在新相位中有完整的轮次配额。
+### End-to-End Workflow
 
-### 工作流程总览
+1. **Research (Phase 1)** — The LLM calls tools to explore datasets, field definitions, operator capabilities, and simulation settings to form a testable financial hypothesis.
+2. **Creative (Phase 2a)** — The LLM submits initial directions with corresponding candidate expressions, which automatically transitions to Improvement.
+3. **Improvement (Phase 2b)** — As backtest jobs finish, the LLM analyzes metrics and submits improvements linked to active directions (maintaining up to 3 concurrent simulations).
+4. **Phase Switch** — When progress stalls or round limits are met, the state machine switches back to Creative to formulate fresh ideas.
+5. **Convergence** — When a factor satisfies quality targets (Sharpe ≥ 1.25, Fitness ≥ 1.0, valid Turnover range), the session converges and outputs a final report.
 
-1. **Research** — LLM 调用工具探索数据集字段、算子功能、回测设置，形成投资假设
-2. **Creative** — LLM 提交多个方向（direction）及其初始表达式，提交后自动切入 Improvement
-3. **Improvement** — LLM 在已有方向上迭代改进表达式，替换已完成回测的因子（保持 3 并发满负荷）
-4. **Phase Switch** — 当 Improvement 达到轮次上限或进步停滞时，自动切回 Creative 生成新方向
-5. **Converge** — LLM 判断因子是否达到质量标准（Sharpe / Fitness / Turnover），达到则终止会话
+### Reliability & Fault Tolerance
 
-### 重试与可靠性
+- **Transient Network Handling**: Network interruptions (connection resets, gateway timeouts, 5xx status codes) are retried with exponential backoff and transparently transferred to a background polling queue.
+- **Factor Error Isolation**: Malformed expressions (syntax errors, invalid operator arguments) fail immediately without consuming retry quotas or interrupting the agent session.
+- **Stall Guards**: Automated heartbeat monitoring and consecutive stall detectors prevent deadlocks during research or iteration.
 
-- 暂时性网络错误（代理超时、连接重置、5xx）自动重试 3 次后转入后台队列持续轮询，恢复后重新注入分析流程
-- 因子本身失败（语法错误、校验不通过）立即标记，不浪费重试
-- 网络错误与因子失败区分处理，避免因临时故障误判因子无效
+### Knowledge Base
 
-### 知识库
-
-每次迭代将可复用经验写入 `agent_output/knowledge_base.json`，后续会话自动搜索相关条目加载到上下文。每轮最多保存 2 条、每会话最多 10 条。
+Reusable insights, discovered anomalies, and successful factor patterns are saved to `agent_output/knowledge_base.json`. In future sessions, relevant historical entries are automatically retrieved and injected into the LLM context (capped at 2 entries per iteration and 10 per session).
 
 ---
 
-## 近期改进
+## Experimental: Multi-Agent Architecture
 
-### v2.2 — Creative / Improvement 相位分离 (2026-05)
+In addition to DirectAgent, AlphaMiningV2 includes a decoupled multi-agent architecture:
 
-- **状态机** — 迭代阶段拆分为 Creative（生成新方向）和 Improvement（深耕现有方向）两种互斥状态，自动切换
-- **方向追踪** — 每个 direction 记录 improvement_count，LLM 必须链接到已有方向，防止无限新建无意义方向
-- **停滞检测** — 连续 5 轮未突破最佳 Sharpe 触发相位切换，避免 LLM 在无效方向上原地打转
-- **轮次上限** — Improvement 最多 8 轮后强制切回 Creative，确保定期探索新思路
-- **多 Agent 框架（实验性）** — OrchestratorV2 + Explorer + ParamOptimizer 的解耦架构，`python -m agent.multi_agent`
+- **OrchestratorV2**: Coordinates agent workflows, manages state, and aggregates performance.
+- **Explorer**: LLM agent focused on broad hypothesis discovery and novel factor expressions.
+- **ParamOptimizer**: Specialized agent that sweeps lookbacks, operators, and neutralization parameters.
+- **IdeaScout**: Web-connected agent that searches academic literature (arXiv, SSRN) and quantitative blogs for actionable ideas.
+- **ResultsStore**: SQLite-backed storage for tracking factor lineages, expressions, and simulation metrics.
 
-### v2.1 — 轮询可靠性与收敛质量分级 (2026-05)
+Launch the multi-agent system:
+```bash
+python -m agent.multi.cli --dataset-id pv13 --idea "Earnings quality and cashflow accruals"
+```
 
-- **透明重试队列** — 暂时性网络错误自动重试 3 次后转入后台持续轮询，恢复后自动重新注入分析
-- **收敛分级** — Sharpe≥1.25 / Fitness≥1.0 为最低及格线；引入质量评估，LLM 自行判断改进价值
-- **网络错误隔离** — 网络错误与因子本身失败区分处理，避免临时故障误判因子无效
-- **知识库硬限制** — 每轮最多 2 条、每会话最多 10 条
-- **LLM 异常兜底** — 捕获 DeepSeek API 网络异常，避免偶发故障导致会话崩溃
+---
+
+## Pipeline Execution (Batch Infrastructure)
+
+For systematic template-based factor evaluation:
+
+```bash
+# Run full automated Probe-Expand pipeline
+python -m pipeline.run_pipeline --dataset-id pv13
+
+# Probe-only mode (screen initial representative parameter grid)
+python -m pipeline.run_pipeline --dataset-id pv13 --probe-only
+
+# Filter and aggregate backtest results by Core
+python -m pipeline.result_filter --results-dir backtest_results/expand/pv13 --group-by-core
+```
+
+---
+
+## Testing
+
+AlphaMiningV2 includes comprehensive test suites with mock validation that do not require active Brain credentials:
+
+```bash
+# Run pipeline logic and flow-control verification
+python test_pipeline.py
+
+# Run end-to-end template, slot domain, and scheduler tests
+python test_improvements.py
+```

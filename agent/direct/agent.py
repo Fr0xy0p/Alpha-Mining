@@ -58,7 +58,8 @@ class DirectAgent:
         self,
         dataset_id: str = "",
         api_key: Optional[str] = None,
-        model: str = "deepseek-chat",
+        model: Optional[str] = None,
+        base_url: Optional[str] = None,
         output_dir: str = "agent_output",
         **kwargs,
     ):
@@ -70,7 +71,7 @@ class DirectAgent:
 
         # Components.
         self.tools = WQTools()
-        self.llm = LLMClient(api_key=api_key, model=model)
+        self.llm = LLMClient(api_key=api_key, model=model, base_url=base_url)
 
         # Session identity.
         self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -106,7 +107,7 @@ class DirectAgent:
             tools=self.tools, quiet=self.quiet, log_event=self._log_event,
         )
 
-        self._log_event("session_start", dataset_id=self.dataset_id, model=model)
+        self._log_event("session_start", dataset_id=self.dataset_id, model=self.llm.model)
 
     # ── Public API ────────────────────────────────────────────────────────
 

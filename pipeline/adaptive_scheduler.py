@@ -1,19 +1,19 @@
 from pathlib import Path  # for subprocess main.py reference
 """
-adaptive_scheduler.py — Probe-Expand 闭环调度器
+adaptive_scheduler.py — Probe-Expand closed-loop scheduler
 
-职责：
-  1. 读取已完成的探测批次（probe batch）回测结果。
-    2. 按 pipeline_core_id 聚合计算代表性指标（Sharpe、Fitness、Turnover）。
-  3. 根据可配置的阈值，将每个 Core 分类为：
-       - EXPAND  : 代表性参数表现良好，生成全量参数网格批次。
-       - WATCH   : 表现平庸，记录但暂不展开，等待更多数据。
-       - ABANDON : 表现差，跳过该 Core 的后续搜索。
-  4. 对 EXPAND 类 Core，调用 main.py 的生成逻辑产出扩展批次（expand batch）。
-  5. 将调度决策写入 JSON 报告，供人工审查或 LLM 进一步分析。
+Responsibilities:
+  1. Read completed probe batch backtest results.
+  2. Aggregate representative metrics (Sharpe, Fitness, Turnover) by pipeline_core_id.
+  3. Classify each Core based on configurable thresholds:
+       - EXPAND  : Representative parameters perform well; generate full parameter grid batches.
+       - WATCH   : Mediocre performance; monitor without immediate expansion.
+       - ABANDON : Poor performance; skip further search for this Core.
+  4. For EXPAND-classified Cores, call main.py generation logic to produce expand batches.
+  5. Write scheduling decisions to a JSON report for inspection or LLM analysis.
 
-用法示例：
-  # 分析探测结果并生成扩展批次
+Usage Examples:
+  # Analyze probe results and generate expand batches:
   python adaptive_scheduler.py \\
     --probe-results-dir backtest_results/probe \\
     --template-doc template_catalog.json \\
@@ -22,7 +22,7 @@ adaptive_scheduler.py — Probe-Expand 闭环调度器
     --output-dir factor_batches \\
     --report-file adaptive_scheduler_report.json
 
-  # 仅分析，不生成扩展批次（dry-run）
+  # Analyze only without generating expand batches (dry-run):
   python adaptive_scheduler.py \\
     --probe-results-dir backtest_results/probe \\
     --dry-run
@@ -37,12 +37,12 @@ from datetime import datetime
 from pathlib import Path
 
 
-# ─── 默认阈值 ─────────────────────────────────────────────────────────────────
+# ─── Default Thresholds ───────────────────────────────────────────────────────
 DEFAULT_EXPAND_MIN_SHARPE = 1.0
 DEFAULT_EXPAND_MIN_FITNESS = 1.0
 DEFAULT_EXPAND_MAX_TURNOVER = 0.7
 DEFAULT_WATCH_MIN_SHARPE = 0.5
-DEFAULT_MIN_PROBE_COUNT = 1   # 至少有这么多成功的探测结果才做决策
+DEFAULT_MIN_PROBE_COUNT = 1   # Minimum successful probes required before making a decision
 # ─────────────────────────────────────────────────────────────────────────────
 
 DECISION_EXPAND = "EXPAND"
@@ -52,7 +52,7 @@ DECISION_ABANDON = "ABANDON"
 
 
 def extract_metrics(result: dict) -> dict | None:
-    """从单条回测结果中提取关键指标，失败时返回 None。"""
+    """Extract key metrics from a single backtest result; returns None on failure."""
     if not isinstance(result, dict) or result.get("status") != "ok":
         return None
 
@@ -84,7 +84,7 @@ def extract_metrics(result: dict) -> dict | None:
 
 
 def load_probe_results(probe_results_dir: Path) -> list[dict]:
-    """递归读取探测结果目录下所有 JSON 文件，返回扁平化的因子结果列表。"""
+    """Recursively load all JSON result files from probe_results_dir, returning a flat list of results."""
     all_results = []
     for result_file in sorted(probe_results_dir.rglob("*.json")):
         try:
@@ -97,8 +97,8 @@ def load_probe_results(probe_results_dir: Path) -> list[dict]:
         if not isinstance(results, list):
             continue
 
-        # 从对应的输入批次文件中读取 pipeline_core_id 和 pipeline_template_id（镜像路径关系）
-        # 如果结果文件中已经有 pipeline_core_id（新格式），直接使用；否则尝试从 source_batch 读取
+        # Read pipeline_core_id and pipeline_template_id from source batch file if available
+        # If result already contains pipeline_core_id (new format), use it directly
         source_batch_path = payload.get("source_batch", "")
         pipeline_core_id_map: dict[int, str] = {}
         pipeline_template_id_map: dict[int, str] = {}
@@ -116,7 +116,7 @@ def load_probe_results(probe_results_dir: Path) -> list[dict]:
             if not isinstance(result, dict):
                 continue
             idx = result.get("index", 0)
-            # pipeline_core_id 优先从结果本身取（向后兼容），否则从源批次取
+            # pipeline_core_id preferentially from result itself, then from source batch
             pipeline_core_id = result.get("pipeline_core_id") or result.get("core_id") or pipeline_core_id_map.get(idx, "")
             pipeline_template_id = result.get("pipeline_template_id") or result.get("template_id") or pipeline_template_id_map.get(idx, "")
             result["pipeline_core_id"] = pipeline_core_id
@@ -128,7 +128,7 @@ def load_probe_results(probe_results_dir: Path) -> list[dict]:
 
 
 def aggregate_by_core(results: list[dict]) -> dict[str, dict]:
-    """按 pipeline_core_id 聚合指标，计算均值、最大值等统计量。"""
+    """Aggregate metrics by pipeline_core_id, computing mean, max, and other statistics."""
     core_groups: dict[str, list[dict]] = defaultdict(list)
 
     for result in results:
@@ -148,6 +148,7 @@ def aggregate_by_core(results: list[dict]) -> dict[str, dict]:
         turnovers = [m["turnover"] for m in metric_list if m["turnover"] is not None]
 
         aggregated[core_id] = {
+            "core_id": core_id,
             "pipeline_core_id": core_id,
             "pipeline_template_id": metric_list[0]["pipeline_template_id"] if metric_list else "",
             "probe_count": n,
@@ -172,21 +173,21 @@ def classify_core(
     watch_min_sharpe: float,
     min_probe_count: int,
 ) -> str:
-    """根据聚合指标对 Core 做出调度决策。"""
+    """Classify a Core based on aggregated performance metrics."""
     if core_stats["probe_count"] < min_probe_count:
-        return DECISION_WATCH  # 探测数据不足，暂时观察
+        return DECISION_WATCH  # Insufficient probe data; watch for now
 
     sharpe_mean = core_stats["sharpe_mean"]
     fitness_mean = core_stats.get("fitness_mean")
     turnover_mean = core_stats.get("turnover_mean")
 
-    # 检查 Turnover 是否过高（即使 Sharpe 好也不展开）
+    # Check whether turnover is too high (do not expand even with good Sharpe)
     if turnover_mean is not None and turnover_mean > expand_max_turnover:
         if sharpe_mean >= watch_min_sharpe:
-            return DECISION_WATCH  # Sharpe 尚可但换手率太高，观察
+            return DECISION_WATCH  # Sharpe acceptable but turnover too high
         return DECISION_ABANDON
 
-    # 主要决策逻辑
+    # Main decision logic
     fitness_ok = fitness_mean is None or fitness_mean >= expand_min_fitness
 
     if sharpe_mean >= expand_min_sharpe and fitness_ok:
@@ -209,12 +210,12 @@ def generate_expand_batch(
     settings_grid_file: str,
     dry_run: bool,
 ) -> bool:
-    """调用 main.py 为指定 Core 生成全量扩展批次（expand batch）。
+    """Call main.py to generate full expand batches for a given Core.
 
-    通过 slot_overrides 将 pipeline_core_id 中的字段对固定下来，然后以非 probe 模式
-    生成全量参数网格，从而只展开这一个 Core 的所有参数组合。
+    Fixes field pairs from pipeline_core_id via slot_overrides and generates
+    the full parameter grid in non-probe mode.
     """
-    # 解析 pipeline_core_id 为 slot 覆盖配置（格式：slot1=val1|slot2=val2）
+    # Parse pipeline_core_id into slot overrides (format: slot1=val1|slot2=val2)
     slot_overrides: dict = {"global": {}}
     template_overrides: dict = {}
 
@@ -226,7 +227,7 @@ def generate_expand_batch(
     if template_overrides:
         slot_overrides[pipeline_template_id] = template_overrides
 
-    # 写入临时覆盖文件
+    # Write temporary override file
     overrides_path = Path(output_dir) / f"_expand_override_{pipeline_template_id}_{datetime.now().strftime('%H%M%S%f')}.json"
     overrides_path.parent.mkdir(parents=True, exist_ok=True)
     overrides_path.write_text(json.dumps(slot_overrides, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -295,7 +296,7 @@ def run_scheduler(args: argparse.Namespace) -> None:
         stats["decision"] = decision
         decisions[decision].append(stats)
 
-    # 打印摘要
+    # Print summary
     print()
     print("=" * 60)
     print("SCHEDULING DECISIONS SUMMARY")
@@ -325,7 +326,7 @@ def run_scheduler(args: argparse.Namespace) -> None:
             )
         print()
 
-    # 生成扩展批次
+    # Generate expand batches
     expand_success = 0
     expand_fail = 0
     if decisions[DECISION_EXPAND] and not args.no_expand:
@@ -348,7 +349,7 @@ def run_scheduler(args: argparse.Namespace) -> None:
                 expand_fail += 1
         print()
 
-    # 写入调度报告
+    # Write scheduling report
     report = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "probe_results_dir": str(probe_results_dir),
@@ -395,7 +396,7 @@ def main() -> None:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
-    # ── 输入输出 ──
+    # ── Input / Output ──
     parser.add_argument(
         "--probe-results-dir",
         default="backtest_results/probe",
@@ -412,14 +413,14 @@ def main() -> None:
         help="Path to write the scheduling decision report JSON.",
     )
 
-    # ── 生成参数（传递给 main.py） ──
+    # ── Generation Parameters (Passed to main.py) ──
     parser.add_argument("--dataset-id", default="pv13", help="Dataset id for expand batch generation.")
     parser.add_argument("--data-type", default="GROUP", help="Data field type filter.")
     parser.add_argument("--template-doc", default="template_catalog.json", help="Template catalog JSON file.")
     parser.add_argument("--slot-overrides-file", default="", help="Base slot overrides file (merged with core overrides).")
     parser.add_argument("--settings-grid-file", default="", help="Settings grid file for expand batches.")
 
-    # ── 决策阈值 ──
+    # ── Decision Thresholds ──
     parser.add_argument(
         "--expand-min-sharpe",
         type=float,
@@ -451,7 +452,7 @@ def main() -> None:
         help="Minimum number of successful probe results required before making a decision.",
     )
 
-    # ── 行为控制 ──
+    # ── Flow Control ──
     parser.add_argument(
         "--no-expand",
         action="store_true",

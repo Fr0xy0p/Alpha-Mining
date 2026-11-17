@@ -1,30 +1,30 @@
 """
-run_pipeline.py — AlphaMiningV2 一键式闭环因子挖掘流水线
+run_pipeline.py — AlphaMiningV2 unified closed-loop factor mining pipeline
 
-将原本需要手动依次执行的四个步骤合并为单一入口：
+Merges the four steps into a single automated entry point:
 
-  阶段 1  PROBE-GEN    生成探测批次（每个 Core 使用 representative_values）
-  阶段 2  PROBE-RUN    对探测批次执行回测
-  阶段 3  SCHEDULE     按 Core 聚合回测结果，决策 EXPAND / WATCH / ABANDON
-  阶段 4  EXPAND-RUN   对 EXPAND 类 Core 生成全量批次并执行回测
+  Phase 1  PROBE-GEN    Generate probe batches (each Core uses representative_values)
+  Phase 2  PROBE-RUN    Execute backtests on probe batches
+  Phase 3  SCHEDULE     Aggregate results by Core; decide EXPAND / WATCH / ABANDON
+  Phase 4  EXPAND-RUN   Generate full parameter batches for EXPAND Cores and run backtests
 
-用法示例：
+Usage Examples:
 
-  # 最简调用（使用所有默认值）
+  # Simplest run (all defaults):
   python run_pipeline.py --dataset-id option8
 
-  # 指定模板与决策阈值
+  # Specific templates and decision thresholds:
   python run_pipeline.py --dataset-id option8 --template-ids TPL_GROUP_IVHV_SMOOTH_V1 \\
     --expand-min-sharpe 1.0 \\
     --expand-max-turnover 0.7
 
-  # 仅重新运行调度与扩展阶段（跳过已完成的探测生成与回测）
+  # Re-run only scheduling and expansion (skip completed probe generation and backtest):
   python run_pipeline.py --dataset-id option8 --skip-probe-gen --skip-probe-run
 
-  # 干跑模式：仅打印调度决策，不生成扩展批次
+  # Dry-run mode: print scheduling decisions without generating expand batches:
   python run_pipeline.py --dataset-id option8 --dry-run
 
-  # 仅运行前两个阶段（生成 + 探测回测），不做调度与扩展
+  # Probe-only mode: run Phase 1 & 2 without scheduling or expansion:
   python run_pipeline.py --dataset-id option8 --probe-only
 """
 
@@ -37,17 +37,17 @@ from datetime import datetime
 from pathlib import Path
 
 
-# ─── 将项目根目录加入 sys.path（支持从任意工作目录运行）─────────────────────
+# ─── Add project root to sys.path (supports running from any working dir) ─────
 _PROJECT_ROOT = Path(__file__).resolve().parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-# ─── 延迟导入各模块（在 parse_args 之后，避免因 import 错误掩盖 --help）────────
-# 实际导入在 main() 中完成。
+# ─── Lazy import modules (after parse_args to prevent import errors masking --help)
+# Actual imports done inside phase functions and main().
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 日志工具
+# Logging Utilities
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _setup_pipeline_logger(output_dir: Path, log_level: str = "INFO") -> logging.Logger:
@@ -78,14 +78,14 @@ def _section(logger: logging.Logger, title: str) -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 阶段 1：探测批次生成
+# Phase 1: Probe Batch Generation
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def phase_probe_gen(args, logger: logging.Logger) -> list[Path]:
-    """调用 main.py 的核心逻辑，以 probe_mode=True 生成探测批次。
+    """Call core logic of main.py with probe_mode=True to generate probe batches.
 
-    直接 import 并调用函数，避免 subprocess 开销和路径依赖。
-    返回本次生成的批次文件路径列表。
+    Directly imports and invokes functions to avoid subprocess overhead.
+    Returns list of generated batch file paths.
     """
     from pipeline.main import (
         load_template_catalog,
@@ -112,7 +112,7 @@ def phase_probe_gen(args, logger: logging.Logger) -> list[Path]:
 
     logger.info("Fetching dataset fields for dataset_id=%s ...", args.dataset_id)
 
-    # 在世坤上抓取数据集字段
+    # Fetch dataset fields from WorldQuant Brain API
     dataset_fields_df = fetch_and_store_datafields(
         dataset_id=args.dataset_id,
         data_type=args.data_type,
@@ -139,7 +139,7 @@ def phase_probe_gen(args, logger: logging.Logger) -> list[Path]:
     settings_grid = load_settings_grid(args.settings_grid_file)
     settings_list = list(iter_settings(SIMULATION_SETTINGS, settings_grid))
 
-    # 过滤不适用于当前 dataset 的模板
+    # Filter templates applicable to current dataset
     applicable_templates = []
     for t in catalog["templates"]:
         if t["template_id"] not in selected_ids:
@@ -158,7 +158,7 @@ def phase_probe_gen(args, logger: logging.Logger) -> list[Path]:
         len(applicable_templates), len(settings_list),
     )
 
-    # 验证算子槽位
+    # Validate operator slots
     for t in applicable_templates:
         tpl_override = slot_overrides.get(t["template_id"], {})
         global_override = slot_overrides.get("global", {})
@@ -180,7 +180,7 @@ def phase_probe_gen(args, logger: logging.Logger) -> list[Path]:
         field_role_mode=args.field_role_mode,
         max_per_template=max(1, args.max_per_template),
         max_generated=max(1, args.max_generated),
-        probe_mode=True,   # ← 探测模式固定开启
+        probe_mode=True,   # Probe mode enabled
     )
 
     written_files = write_factor_batches(
@@ -204,7 +204,7 @@ def phase_probe_gen(args, logger: logging.Logger) -> list[Path]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 阶段 2 / 4：执行回测（通用）
+# Phase 2 / 4: Execute Backtest (Shared)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def phase_run_backtest(
@@ -214,7 +214,7 @@ def phase_run_backtest(
     logger: logging.Logger,
     phase_label: str = "BACKTEST",
 ) -> None:
-    """直接调用 backtest_runner 的核心函数，对 input_dir 下所有批次执行回测。"""
+    """Call core backtest_runner functions to execute backtests on all batches in input_dir."""
     from pipeline.backtest_runner import (
         setup_logger as br_setup_logger,
         load_credentials,
@@ -232,7 +232,7 @@ def phase_run_backtest(
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # backtest_runner 有自己的 logger，复用它（写入同一个 output_dir/logs）
+    # Re-use backtest_runner logger, writing to output_dir/logs
     br_logger = br_setup_logger(output_dir=output_dir, log_level=args.log_level)
 
     username, password = load_credentials()
@@ -279,14 +279,14 @@ def phase_run_backtest(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 阶段 3：自适应调度（Probe-Expand 决策）
+# Phase 3: Adaptive Scheduling (Probe-Expand Decision)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def phase_schedule(args, probe_results_dir: Path, expand_batches_dir: Path, logger: logging.Logger) -> dict:
-    """
-    聚合探测回测结果，做出 EXPAND/WATCH/ABANDON 决策，并为 EXPAND Core 生成全量批次。
+    """Aggregate probe backtest results, make EXPAND/WATCH/ABANDON decisions,
 
-    返回调度报告 dict(同时写入 JSON 文件）。
+    and generate full batches for EXPAND Cores.
+    Returns the scheduling report dict (and writes to JSON).
     """
     from pipeline.adaptive_scheduler import (
         load_probe_results,
@@ -338,20 +338,22 @@ def phase_schedule(args, probe_results_dir: Path, expand_batches_dir: Path, logg
     if decisions[DECISION_EXPAND]:
         logger.info("── EXPAND cores ──")
         for s in decisions[DECISION_EXPAND]:
+            core_id_str = s.get("core_id") or s.get("pipeline_core_id", "")
             logger.info(
                 "  %-60s  sharpe_mean=%.3f  probes=%d",
-                s["core_id"][:60], s["sharpe_mean"], s["probe_count"],
+                core_id_str[:60], s["sharpe_mean"], s["probe_count"],
             )
 
     if decisions[DECISION_WATCH]:
         logger.info("── WATCH cores ──")
         for s in decisions[DECISION_WATCH]:
+            core_id_str = s.get("core_id") or s.get("pipeline_core_id", "")
             logger.info(
                 "  %-60s  sharpe_mean=%.3f  probes=%d",
-                s["core_id"][:60], s["sharpe_mean"], s["probe_count"],
+                core_id_str[:60], s["sharpe_mean"], s["probe_count"],
             )
 
-    # 生成扩展批次
+    # Generate expand batches
     expand_success = 0
     expand_fail = 0
 
@@ -378,7 +380,7 @@ def phase_schedule(args, probe_results_dir: Path, expand_batches_dir: Path, logg
     elif args.dry_run and decisions[DECISION_EXPAND]:
         logger.info("[DRY-RUN] Would generate %d expand batch(es). Skipping.", len(decisions[DECISION_EXPAND]))
 
-    # 写入调度报告
+    # Write scheduling report
     report = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "probe_results_dir": str(probe_results_dir),
@@ -414,7 +416,7 @@ def phase_schedule(args, probe_results_dir: Path, expand_batches_dir: Path, logg
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 主流程
+# Main Pipeline
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def run_pipeline(args, logger: logging.Logger) -> None:
@@ -435,13 +437,13 @@ def run_pipeline(args, logger: logging.Logger) -> None:
     logger.info("  dry_run         : %s", args.dry_run)
     logger.info("  probe_only      : %s", args.probe_only)
 
-    # ── 阶段 1：探测批次生成 ──────────────────────────────────────────────────
+    # ── Phase 1: Probe Generation ─────────────────────────────────────────────
     if args.skip_probe_gen:
         logger.info("[SKIP] Phase 1 (probe generation) skipped by --skip-probe-gen.")
     else:
         phase_probe_gen(args, logger)
 
-    # ── 阶段 2：探测回测 ──────────────────────────────────────────────────────
+    # ── Phase 2: Probe Backtest ───────────────────────────────────────────────
     if args.skip_probe_run:
         logger.info("[SKIP] Phase 2 (probe backtest) skipped by --skip-probe-run.")
     else:
@@ -458,7 +460,7 @@ def run_pipeline(args, logger: logging.Logger) -> None:
         logger.info("Pipeline stopped after probe phases (--probe-only). Elapsed: %.1fs", elapsed)
         return
 
-    # ── 阶段 3：自适应调度 ────────────────────────────────────────────────────
+    # ── Phase 3: Adaptive Scheduling ──────────────────────────────────────────
     report = phase_schedule(
         args=args,
         probe_results_dir=probe_results_dir,
@@ -478,7 +480,7 @@ def run_pipeline(args, logger: logging.Logger) -> None:
         logger.info("Total elapsed: %.1fs", elapsed)
         return
 
-    # ── 阶段 4：扩展回测 ──────────────────────────────────────────────────────
+    # ── Phase 4: Expand Backtest ──────────────────────────────────────────────
     phase_run_backtest(
         input_dir=expand_batches_dir,
         output_dir=expand_results_dir,
@@ -521,7 +523,7 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
-    # ── 数据集与模板 ──────────────────────────────────────────────────────────
+    # ── Dataset & Template ──────────────────────────────────────────────────
     grp_data = parser.add_argument_group("Dataset & Template")
     grp_data.add_argument("--dataset-id", default="pv13",
                           help="Dataset id (e.g. pv13, option8).")
@@ -548,7 +550,7 @@ def build_parser() -> argparse.ArgumentParser:
     grp_data.add_argument("--search", default="",
                           help="Optional search term for field fetch.")
 
-    # ── 生成规模 ──────────────────────────────────────────────────────────────
+    # ── Generation Scale ────────────────────────────────────────────────────
     grp_gen = parser.add_argument_group("Generation Scale")
     grp_gen.add_argument("--batch-size", type=int, default=500,
                          help="Factors per batch file.")
@@ -557,7 +559,7 @@ def build_parser() -> argparse.ArgumentParser:
     grp_gen.add_argument("--max-generated", type=int, default=20000,
                          help="Global generation cap.")
 
-    # ── 目录配置 ──────────────────────────────────────────────────────────────
+    # ── Directories ─────────────────────────────────────────────────────────
     grp_dirs = parser.add_argument_group("Directories")
     grp_dirs.add_argument("--datafields-dir", default="datafields_cache",
                           help="Data field cache directory.")
@@ -570,7 +572,7 @@ def build_parser() -> argparse.ArgumentParser:
     grp_dirs.add_argument("--expand-results-dir", default="backtest_results/expand",
                           help="Output directory for expand backtest results.")
 
-    # ── 回测参数 ──────────────────────────────────────────────────────────────
+    # ── Backtest Parameters ─────────────────────────────────────────────────
     grp_bt = parser.add_argument_group("Backtest")
     grp_bt.add_argument("--max-workers", type=int, default=3,
                         help="Parallel backtest workers (max 3, Brain API limit).")
@@ -581,9 +583,9 @@ def build_parser() -> argparse.ArgumentParser:
     grp_bt.add_argument("--relogin-interval-seconds", type=int, default=13800,
                         help="Re-login interval in seconds (~3h50m).")
 
-    # ── 调度阈值 ──────────────────────────────────────────────────────────────
+    # ── Scheduling Thresholds ───────────────────────────────────────────────
     grp_sched = parser.add_argument_group("Scheduling Thresholds")
-    grp_sched.add_argument("--expand-min-sharpe", type=float, default=0.8,
+    grp_sched.add_argument("--expand-min-sharpe", type=float, default=1.0,
                            help="Min mean Sharpe to trigger EXPAND.")
     grp_sched.add_argument("--expand-min-fitness", type=float, default=0.45,
                            help="Min mean Fitness to trigger EXPAND.")
@@ -594,14 +596,14 @@ def build_parser() -> argparse.ArgumentParser:
     grp_sched.add_argument("--min-probe-count", type=int, default=1,
                            help="Min successful probe results required before deciding.")
 
-    # ── 报告 ──────────────────────────────────────────────────────────────────
+    # ── Report ──────────────────────────────────────────────────────────────
     grp_report = parser.add_argument_group("Report")
     grp_report.add_argument("--report-file", default="pipeline_report.json",
                             help="Path to write the pipeline scheduling report.")
     grp_report.add_argument("--log-level", default="INFO",
                             choices=["DEBUG", "INFO", "WARNING", "ERROR"])
 
-    # ── 流程控制 ──────────────────────────────────────────────────────────────
+    # ── Flow Control ────────────────────────────────────────────────────────
     grp_ctrl = parser.add_argument_group("Pipeline Control")
     grp_ctrl.add_argument("--skip-probe-gen", action="store_true", default=False,
                           help="Skip Phase 1 (probe batch generation). Useful when probe batches already exist.")
@@ -619,7 +621,7 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
-    # 日志初始化（使用 expand_results_dir 作为日志根目录，确保全程日志集中）
+    # Log setup (expand_results_dir as log root to ensure centralized logging)
     log_root = Path(args.expand_results_dir)
     log_root.mkdir(parents=True, exist_ok=True)
     logger = _setup_pipeline_logger(output_dir=log_root, log_level=args.log_level)
