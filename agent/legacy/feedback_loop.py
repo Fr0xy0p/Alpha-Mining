@@ -28,7 +28,7 @@ from datetime import datetime
 from pathlib import Path
 
 from agent.llm_client import LLMClient, load_api_key
-from agent.result_analyzer import analyze_core, analyze_probe_results
+from agent.legacy.result_analyzer import analyze_core, analyze_probe_results
 
 
 # ─── ANSI helpers ───────────────────────────────────────────────────────────

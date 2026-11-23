@@ -10,6 +10,7 @@ from unittest.mock import patch, MagicMock
 from agent.llm_client import (
     LLMClient,
     load_api_key,
+    _extract_json,
     GEMINI_BASE_URL,
     GEMINI_DEFAULT_MODEL,
     GROQ_BASE_URL,
@@ -108,6 +109,24 @@ class TestLLMClientGroqAndDeepSeek(unittest.TestCase):
         mock_post.assert_called_once()
         call_url = mock_post.call_args[0][0]
         self.assertEqual(call_url, f"{GEMINI_BASE_URL}/chat/completions")
+
+
+class TestExtractJson(unittest.TestCase):
+    """Test robust JSON extraction from LLM outputs."""
+
+    def test_extract_plain_json(self):
+        text = '{"type": "submit", "factors": ["close"]}'
+        self.assertEqual(_extract_json(text), {"type": "submit", "factors": ["close"]})
+
+    def test_extract_fenced_json(self):
+        text = 'Here is the factor:\n```json\n{"type": "submit", "expressions": ["volume"]}\n```\nGood luck!'
+        self.assertEqual(_extract_json(text), {"type": "submit", "expressions": ["volume"]})
+
+    def test_extract_embedded_json_with_braces_in_prose(self):
+        text = 'Note {important note}:\n{"type": "analyze", "hypothesis": "mean reversion {test}"}\nTrailing text {here}'
+        extracted = _extract_json(text)
+        self.assertEqual(extracted["type"], "analyze")
+        self.assertEqual(extracted["hypothesis"], "mean reversion {test}")
 
 
 if __name__ == "__main__":

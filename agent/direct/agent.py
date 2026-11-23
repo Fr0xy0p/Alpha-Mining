@@ -350,7 +350,25 @@ class DirectAgent:
                 stall_count += 1
 
             elif rtype == "submit":
-                exprs = response.get("expressions", [])
+                raw_exprs = (
+                    response.get("expressions")
+                    or response.get("factors")
+                    or (response.get("args", {}).get("expressions") if isinstance(response.get("args"), dict) else None)
+                    or (response.get("args", {}).get("factors") if isinstance(response.get("args"), dict) else None)
+                    or []
+                )
+                exprs = []
+                for item in raw_exprs:
+                    if isinstance(item, str):
+                        exprs.append({"expression": item.strip(), "settings": {}, "rationale": ""})
+                    elif isinstance(item, dict):
+                        expr = (item.get("expression") or item.get("formula") or item.get("factor") or "").strip()
+                        if expr:
+                            exprs.append({
+                                "expression": expr,
+                                "settings": item.get("settings", {}),
+                                "rationale": item.get("rationale", ""),
+                            })
                 if exprs:
                     if len(exprs) < 3 and not self.quiet:
                         print(

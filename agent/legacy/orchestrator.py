@@ -29,11 +29,11 @@ from typing import Optional
 
 from agent.llm_client import LLMClient, load_api_key
 from agent.expression_validator import ExpressionValidator
-from agent.template_generator import TemplateGenerator
+from agent.legacy.template_generator import TemplateGenerator
 from agent.mutation_engine import MutationEngine
-from agent.result_analyzer import analyze_probe_results, analyze_core
-from agent.convergence import ConvergenceDetector
-from agent.memory import FactorMemory
+from agent.legacy.result_analyzer import analyze_probe_results, analyze_core
+from agent.legacy.convergence import ConvergenceDetector
+from agent.legacy.memory import FactorMemory
 
 from pipeline.adaptive_scheduler import load_probe_results, aggregate_by_core
 

@@ -4,7 +4,7 @@ agent/convergence.py — Convergence detection for iterative factor search.
 Decides when to stop iterating on a core or the entire search session.
 """
 
-from agent.memory import FactorMemory
+from agent.legacy.memory import FactorMemory
 
 
 # ─── Default thresholds ─────────────────────────────────────────────────────

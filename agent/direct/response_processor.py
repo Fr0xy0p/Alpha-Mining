@@ -252,13 +252,24 @@ class ResponseProcessor:
         # Build new expressions.
         new_exprs = []
         for imp in response.get("improvements", []):
-            expr = imp.get("expression", "").strip()
+            if isinstance(imp, str):
+                expr = imp.strip()
+                imp_settings = {}
+                imp_rationale = ""
+                imp_direction = ""
+            elif isinstance(imp, dict):
+                expr = (imp.get("expression") or imp.get("formula") or imp.get("factor") or "").strip()
+                imp_settings = imp.get("settings", {})
+                imp_rationale = imp.get("rationale", "")
+                imp_direction = imp.get("direction_id", "")
+            else:
+                continue
             if expr:
                 new_exprs.append({
                     "expression": expr,
-                    "settings": imp.get("settings", {}),
-                    "rationale": imp.get("rationale", ""),
-                    "direction_id": imp.get("direction_id", ""),
+                    "settings": imp_settings,
+                    "rationale": imp_rationale,
+                    "direction_id": imp_direction,
                 })
 
         self._log_event(

@@ -128,31 +128,70 @@ def _extract_json(text: str) -> dict:
     """Robustly extract and parse the first JSON object from *text*.
 
     Handles plain JSON, markdown-fenced JSON blocks (`````json … `````),
-    and text with leading / trailing noise.
+    embedded JSON objects with leading/trailing prose, and escaped strings.
     """
     text = text.strip()
 
-    # Strip markdown code fences.
-    if text.startswith("```"):
-        lines = text.splitlines()
-        start = 1
-        end = len(lines)
-        if lines[-1].strip() == "```":
-            end -= 1
-        text = "\n".join(lines[start:end]).strip()
-
-    # Direct parse.
+    # 1. Direct parse
     try:
-        return json.loads(text)
-    except json.JSONDecodeError:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            return data
+    except (json.JSONDecodeError, ValueError):
         pass
 
-    # Fallback: locate the outermost { … } block.
+    # 2. Extract from markdown code fences: ```json ... ``` or ``` ... ```
+    fence_matches = re.findall(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
+    for fence in fence_matches:
+        try:
+            data = json.loads(fence.strip())
+            if isinstance(data, dict):
+                return data
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # 3. Balanced-brace parser to locate the first complete JSON object { ... }
+    first_brace = text.find("{")
+    if first_brace != -1:
+        depth = 0
+        in_string = False
+        escape = False
+        start_idx = -1
+        for i in range(first_brace, len(text)):
+            c = text[i]
+            if escape:
+                escape = False
+                continue
+            if c == "\\":
+                escape = True
+                continue
+            if c == '"':
+                in_string = not in_string
+                continue
+            if not in_string:
+                if c == "{":
+                    if depth == 0:
+                        start_idx = i
+                    depth += 1
+                elif c == "}":
+                    depth -= 1
+                    if depth == 0 and start_idx != -1:
+                        candidate = text[start_idx : i + 1]
+                        try:
+                            data = json.loads(candidate)
+                            if isinstance(data, dict):
+                                return data
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+
+    # 4. Fallback: regex search for outermost { ... }
     match = re.search(r"\{[\s\S]*\}", text)
     if match:
         try:
-            return json.loads(match.group())
-        except json.JSONDecodeError:
+            data = json.loads(match.group())
+            if isinstance(data, dict):
+                return data
+        except (json.JSONDecodeError, ValueError):
             pass
 
     raise ValueError(f"Could not parse JSON from LLM response:\n{text[:600]}")

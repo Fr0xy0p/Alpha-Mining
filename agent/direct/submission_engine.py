@@ -68,7 +68,14 @@ class SubmissionEngine:
         rate_limited = 0
 
         for ex in expressions:
-            expr = ex.get("expression", "").strip()
+            if isinstance(ex, str):
+                expr = ex.strip()
+                ex_dict = {"expression": expr, "settings": {}, "rationale": "", "direction_id": ""}
+            elif isinstance(ex, dict):
+                expr = (ex.get("expression") or ex.get("formula") or ex.get("factor") or "").strip()
+                ex_dict = ex
+            else:
+                continue
             if not expr:
                 continue
 
@@ -94,20 +101,20 @@ class SubmissionEngine:
             if len(self.job_store.active_jobs) < MAX_CONCURRENT:
                 result = self.tools.submit_factor(
                     expr,
-                    settings=ex.get("settings", {}),
+                    settings=ex_dict.get("settings", {}),
                     dataset_id=self.dataset_id,
                 )
 
                 if result.status == "submitted":
                     submitted += 1
-                    self._record_submission(expr, ex, result.job_id)
+                    self._record_submission(expr, ex_dict, result.job_id)
                     if not self.quiet:
                         print(f"  [SUBMIT] {expr[:70]}...  ->  ...{result.job_id[-16:]}")
                 else:
                     is_rate_limit = "429" in (result.error or "")
                     if is_rate_limit:
                         rate_limited += 1
-                        self._enqueue(expr, ex)
+                        self._enqueue(expr, ex_dict)
                         if not self.quiet:
                             print(f"  [RATE_LIMIT→QUEUE] {expr[:70]}...  (queued for retry)")
                     else:
@@ -117,7 +124,7 @@ class SubmissionEngine:
                             print(f"  [FAIL] {expr[:70]}...  {result.error[:120]}")
             else:
                 # No slot — enqueue for later.
-                self._enqueue(expr, ex)
+                self._enqueue(expr, ex_dict)
                 if not self.quiet:
                     print(f"  [SLOTS FULL→QUEUE] {expr[:70]}...  (queue={len(self._submission_queue)})")
 
