@@ -6,9 +6,12 @@ dist/
 wheels/
 *.egg-info
 
-# Virtual environments
+# Virtual environments and secrets
 .venv
 .env
+.env.*
+*.env
+*.key
 backtest_results/
 
 remote_results/
